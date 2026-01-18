@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Recebe quantidade de mensagens como parâmetro (padrão: 100)
+MESSAGE_COUNT=${1:-100}
+
 # Array com nomes de heróis de My Hero Academia
 heroes=(
   "Deku"
@@ -46,9 +49,9 @@ QUEUE_URL="http://localhost:4566/000000000000/event-hero-orders-queue"
 # Número total de heróis no array
 total_heroes=${#heroes[@]}
 
-echo "Enviando 80 mensagens com heróis escolhidos ALEATORIAMENTE..."
+echo "Enviando $MESSAGE_COUNT mensagens com heróis escolhidos ALEATORIAMENTE..."
 
-for i in {1..80}; do
+for ((i=1; i<=MESSAGE_COUNT; i++)); do
   # Escolhe índice aleatório entre 0 e (total_heroes-1)
   random_index=$((RANDOM % total_heroes))
 
@@ -75,10 +78,10 @@ for i in {1..80}; do
     --no-sign-request &>/dev/null &
 
   # Mostra progresso (mas sem travar o envio)
-  printf "[$i/80] Enviado: %-12s (Priority: %d)\r" "$hero_name" "$priority"
+  printf "[$i/$MESSAGE_COUNT] Enviado: %-12s (Priority: %d)\r" "$hero_name" "$priority"
 done
 
 # Aguarda todos os envios em background terminarem
 wait
 
-echo -e "\n\nTodas as 80 mensagens foram enviadas com sucesso!"
+echo -e "\n\nTodas as $MESSAGE_COUNT mensagens foram enviadas com sucesso!"
