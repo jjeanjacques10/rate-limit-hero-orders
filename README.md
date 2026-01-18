@@ -13,8 +13,9 @@ Um aplicativo de super-heróis para receber solicitações de serviços de heró
 ## Tecnologias Utilizadas
 
 - Spring Boot 3
-- Java 2.1
+- Java 21
 - AWS SQS
+- Redis
 
 ## Profiles
 
@@ -317,3 +318,34 @@ spring:
 | **Burst**            | Limitado ao número de permits             | Suporta burst até o tamanho do bucket       |
 | **Refill**           | Não há refill automático                  | Refill automático baseado no tempo          |
 | **Uso Ideal**        | Limitar carga em recursos compartilhados  | Controlar throughput e evitar sobrecarga    |
+
+## Como Executar o Projeto
+
+1. Criar o ambiente local com [Docker Compose](local-environment/docker-compose.yml):
+
+``` bash
+cd local-environment
+docker-compose up -d --build
+```
+
+2. Executar a aplicação Spring Boot com o profile desejado:
+
+``` bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=distributed-token-bucket
+``` 
+
+3. Enviar mensagens para a fila SQS e observar o comportamento do consumidor conforme o profile selecionado ([send-batch-message.sh](local-environment/localstack/test/send-batch-message.sh))
+
+``` bash
+sh local-environment/localstack/test/send-batch-message.sh
+```
+
+---
+
+## Licença
+
+Este projeto está licenciado sob a Licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+## Autor
+
+Desenvolvido por [Jean Jacques Barros](https://github.com/jjeanjacques10)
