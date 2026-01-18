@@ -28,28 +28,28 @@ class OrderConsumerDistributedSemaphores(
         var permitId: String? = null
 
         try {
-            // Try to acquire a permit from the distributed semaphore
+            // Tenta adquirir uma permissão do semáforo distribuído
             permitId = distributedSemaphore.tryAcquire(message.payload.heroId)
 
             if (permitId == null) {
-                // Could not acquire permit, reject the message to be retried later
+                // Não foi possível adquirir permissão, rejeita a mensagem para ser retentada depois
                 log.warn("Could not acquire semaphore permit for order: ${message.payload.heroName}. Message will NOT be acknowledged (returning to queue).")
-                // Do NOT acknowledge - message will return to the queue
+                // NÃO faz o acknowledge - a mensagem retornará à fila
                 return
             }
 
-            // Process the order with the permit
+            // Processa o pedido com a permissão
             orderService.processOrder(message.payload)
 
-            // Acknowledge the message only after successful processing
+            // Faz o acknowledge da mensagem apenas após o processamento bem-sucedido
             acknowledgement.acknowledge()
             log.info("Message acknowledged successfully for hero: ${message.payload.heroName}")
         } catch (e: Exception) {
-            // If processing fails, do NOT acknowledge - message will return to queue
+            // Se o processamento falhar, NÃO faz acknowledge - a mensagem retornará à fila
             log.error("Error processing message for hero: ${message.payload.heroName}. Message will NOT be acknowledged.", e)
-            // Message will automatically return to the queue
+            // A mensagem retornará automaticamente à fila
         } finally {
-            // Always release the permit if it was acquired
+            // Sempre libera a permissão se ela foi adquirida
             permitId?.let {
                 distributedSemaphore.release(it)
             }

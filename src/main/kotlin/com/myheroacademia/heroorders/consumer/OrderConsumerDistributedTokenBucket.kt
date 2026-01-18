@@ -26,24 +26,24 @@ class OrderConsumerDistributedTokenBucket(
     )
     fun consumeMessage(message: Message<HeroOrderRequest>, acknowledgement: Acknowledgement) {
         try {
-            // Try to consume a token from the bucket
+            // Tenta consumir um token do bucket
             if (!tokenBucket.tryConsume()) {
-                // No token available, reject the message to be retried later
+                // Nenhum token disponível, rejeita a mensagem para ser retentada depois
                 log.warn("No token available for order: ${message.payload.heroName}. Message will NOT be acknowledged (returning to queue).")
-                // Do NOT acknowledge - message will return to the queue
+                // NÃO faz o acknowledge - a mensagem retornará à fila
                 return
             }
 
-            // Process the order if token was consumed
+            // Processa o pedido se o token foi consumido
             orderService.processOrder(message.payload)
 
-            // Acknowledge the message only after successful processing
+            // Faz o acknowledge a mensagem apenas após o processamento bem-sucedido
             acknowledgement.acknowledge()
             log.info("Message acknowledged successfully for hero: ${message.payload.heroName}")
         } catch (e: Exception) {
-            // If processing fails, do NOT acknowledge - message will return to queue
+            // Se o processamento falhar, NÃO faz acknowledge - a mensagem retornará à fila
             log.error("Error processing message for hero: ${message.payload.heroName}. Message will NOT be acknowledged.", e)
-            // Message will automatically return to the queue
+            // A mensagem retornará automaticamente à fila
         }
     }
 
