@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: heroorders
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: heropassword123
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      endpoint: http://localhost:4566
+      credentials:
+        access-key: test
+        secret-key: test
+      sqs:
+        enabled: true
+        queue:
+          auto-create: false
+        region: us-east-1

@@ -1,0 +1,39 @@
+version: "3.8"
+
+services:
+  localstack:
+    image: localstack/localstack:4.12.0
+    container_name: localstack
+    ports:
+      - "4566:4566" # Edge port (todos os serviços)
+    environment:
+      - SERVICES=sqs
+      - DEFAULT_REGION=us-east-1
+      - EDGE_PORT=4566
+      - LOCALSTACK_HOST=localhost
+      - HOSTNAME_EXTERNAL=localhost
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - DEBUG=1
+    volumes:
+      - "./localstack_data:/var/lib/localstack"
+      - "./localstack/init:/etc/localstack/init/ready.d"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  redis:
+    image: "redis:7.0.11-alpine"
+    container_name: redis
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=heropassword123
+    volumes:
+      - "./redis_data:/data"
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "heropassword123"]
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "heropassword123", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
