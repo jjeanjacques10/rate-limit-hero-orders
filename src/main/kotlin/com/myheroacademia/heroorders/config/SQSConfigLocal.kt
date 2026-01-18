@@ -1,13 +1,10 @@
 package com.myheroacademia.heroorders.config
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.SerializationFeature
 import io.awspring.cloud.sqs.config.SqsMessageListenerContainerFactory
 import io.awspring.cloud.sqs.operations.SqsTemplate
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.context.annotation.Primary
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import software.amazon.awssdk.regions.Region
@@ -19,7 +16,7 @@ import java.net.URI
 @Configuration
 class SQSConfigLocal {
 
-    @Value("\${spring.cloud.aws.region.static}")
+    @Value("\${spring.cloud.aws.region.static:us-east-1}")
     private lateinit var region: String
 
     @Value("\${spring.cloud.aws.endpoint}")
@@ -30,6 +27,12 @@ class SQSConfigLocal {
 
     @Value("\${spring.cloud.aws.credentials.secret-key:test}")
     private lateinit var secretKey: String
+
+    @Value("\${spring.cloud.aws.sqs.listener.max-concurrent-messages:3}")
+    private var maxConcurrentMessages: Int = 3
+
+    @Value("\${spring.cloud.aws.sqs.listener.max-messages-per-poll:3}")
+    private var maxMessagesPerPoll: Int = 3
 
     @Bean
     fun sqsClient(): SqsClient {
@@ -59,8 +62,8 @@ class SQSConfigLocal {
             .builder<Any?>()
             .sqsAsyncClient(sqsAsyncClient)
             .configure { options ->
-                options.maxConcurrentMessages(3)
-                options.maxMessagesPerPoll(3)
+                options.maxConcurrentMessages(maxConcurrentMessages)
+                options.maxMessagesPerPoll(maxMessagesPerPoll)
             }
             .build()
     }

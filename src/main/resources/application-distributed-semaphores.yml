@@ -1,0 +1,8 @@
+spring:
+  cloud:
+    aws:
+      sqs:
+        listener:
+          max-concurrent-messages: 20
+          max-messages-per-poll: 10
+          poll-timeout: 10
