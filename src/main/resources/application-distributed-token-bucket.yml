@@ -1,0 +1,14 @@
+spring:
+  cloud:
+    aws:
+      sqs:
+        listener:
+          max-concurrent-messages: 5
+          max-messages-per-poll: 5
+          poll-timeout: 10
+
+# Token Bucket Configuration
+# Max Tokens: 10
+# Refill Rate: 2 tokens per second
+# This allows for burst traffic while maintaining a steady rate limit
+

@@ -91,9 +91,5 @@ class RedisDistributedSemaphore(
         )
     }
 
-    /**
-     * Gets the maximum number of permits allowed
-     */
-    fun getMaxPermits(): Int = MAX_PERMITS
 }
 

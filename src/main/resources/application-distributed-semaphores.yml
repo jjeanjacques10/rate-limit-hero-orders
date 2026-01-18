@@ -6,3 +6,7 @@ spring:
           max-concurrent-messages: 20
           max-messages-per-poll: 10
           poll-timeout: 10
+
+# Distributed Semaphore Configuration
+# Max Permits: 5
+# This allows up to 5 concurrent processing threads

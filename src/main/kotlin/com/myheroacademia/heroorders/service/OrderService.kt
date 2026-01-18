@@ -10,7 +10,7 @@ class OrderService {
     fun processOrder(order: HeroOrderRequest) {
         log.info("Received message from SQS: ${order.heroName}")
         // Sleep to simulate processing time
-        Thread.sleep(2000)
+        Thread.sleep(5000)
     }
 
     companion object {

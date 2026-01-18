@@ -6,3 +6,7 @@ spring:
           max-concurrent-messages: 3
           max-messages-per-poll: 3
           poll-timeout: 10
+
+# Local Control Configuration
+# Max Concurrent Messages: 3
+# Max Messages Per Poll: 3
