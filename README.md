@@ -1,8 +1,8 @@
-# My Hero Academia - Solicitações de Super-Heróis
+# 🦸 My Hero Academia - Solicitações de Super-Heróis
 
 Este repositório contém o código e os recursos do projeto "My Hero Academia - Solicitações de Super-Heróis".
 
-Um aplicativo de super-heróis para receber solicitações de serviços de heróis.
+Uma aplicação que controla as solicitações de ajuda para super-heróis, utilizando AWS SQS para gerenciamento de filas e implementando diferentes estratégias de limitação de taxa (rate limiting) para o consumo das mensagens.
 
 ## Recursos
 
@@ -12,10 +12,11 @@ Um aplicativo de super-heróis para receber solicitações de serviços de heró
 
 ## Tecnologias Utilizadas
 
-- Spring Boot 3
-- Java 21
-- AWS SQS
-- Redis
+- 🍃 Spring Boot 3
+- ☕ Java 21
+- 📬 AWS SQS
+- 🔴 Redis
+- 🐳 Docker
 
 ## Profiles
 
@@ -29,6 +30,7 @@ ex: `-Dspring.profiles.active=local-control` ou `-Dspring.profiles.active=distri
 | distributed-semaphores     | Define as configurações para usar semáforos distribuídos no controle do consumo no SQS. Recomendado para arquiteturas distribuídas. |
 | distributed-token-bucket   | Define as configurações para usar token bucket distribuído no controle de taxa de consumo no SQS. Recomendado para rate limiting.   |
 
+---
 
 ## Configurações do Profile local-control
 
@@ -308,6 +310,8 @@ spring:
 ✅ **Sem Perda de Dados**: ACK manual garante que apenas mensagens processadas com sucesso sejam removidas
 
 </details>
+
+---
 
 ### Diferença entre Semaphore vs Token Bucket
 
