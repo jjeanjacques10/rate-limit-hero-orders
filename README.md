@@ -22,13 +22,14 @@ Uma aplicação que controla as solicitações de ajuda para super-heróis, util
 
 - **spring.profiles.active:** Define o profile ativo para configurar o comportamento do consumidor SQS.
 
-ex: `-Dspring.profiles.active=local-control` ou `-Dspring.profiles.active=distributed-semaphores` ou `-Dspring.profiles.active=distributed-token-bucket`
+ex: `-Dspring.profiles.active=local-control` ou `-Dspring.profiles.active=distributed-semaphores` ou `-Dspring.profiles.active=distributed-token-bucket` ou `distributed-token-bucket4j`
 
-| Profile                    | Description                                                                                                                         |
-|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
-| local-control              | Define as configurações para usar um controle local do consumo no SQS. Não recomendado para arquiteturas distribuídas.              |
-| distributed-semaphores     | Define as configurações para usar semáforos distribuídos no controle do consumo no SQS. Recomendado para arquiteturas distribuídas. |
-| distributed-token-bucket   | Define as configurações para usar token bucket distribuído no controle de taxa de consumo no SQS. Recomendado para rate limiting.   |
+| Profile                           | Description                                                                                                                         |
+|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| local-control                     | Define as configurações para usar um controle local do consumo no SQS. Não recomendado para arquiteturas distribuídas.              |
+| distributed-semaphores            | Define as configurações para usar semáforos distribuídos no controle do consumo no SQS. Recomendado para arquiteturas distribuídas. |
+| distributed-token-bucket          | Define as configurações para usar token bucket distribuído no controle de taxa de consumo no SQS. Recomendado para rate limiting.   |
+| distributed-token-bucket4j | Define as configurações para usar token bucket com Bucket4j e Redis. Solução enterprise-ready para rate limiting distribuído.       |
 
 ---
 
@@ -311,17 +312,208 @@ spring:
 
 </details>
 
+## Configurações do Profile distributed-token-bucket4j
+
+<details>
+<summary>Veja as configurações do profile <b>distributed-token-bucket4j</b></summary>
+
+## Objetivo
+
+Implementar **rate limiting** usando a biblioteca **Bucket4j** com backend Redis, uma solução enterprise-ready e otimizada para controlar a taxa de processamento de mensagens com suporte a **burst traffic** e alta performance.
+
+## Configurações Implementadas
+
+### 1. RedisDistributedTokenBucket4j.kt
+Serviço que utiliza a biblioteca Bucket4j com Redis para implementar token bucket distribuído:
+
+**Características:**
+- **MAX_TOKENS = 10**: Capacidade máxima do bucket (permite burst de até 10 mensagens)
+- **REFILL_RATE = 2 tokens/segundo**: Taxa de reabastecimento automática
+- **Greedy Refill**: Tokens são reabastecidos de forma otimizada
+- **Lettuce Redis Client**: Cliente Redis de alta performance
+- **ProxyManager**: Gerenciamento distribuído de buckets com CAS (Compare-And-Set)
+- **Atomic Operations**: Operações atômicas garantidas pela biblioteca
+
+**Código:**
+
+```kotlin
+@Service
+class RedisDistributedTokenBucket4j(
+    @Value("\${spring.data.redis.host:localhost}") private val redisHost: String,
+    @Value("\${spring.data.redis.port:6379}") private val redisPort: Int
+) {
+    private lateinit var bucket: Bucket
+    
+    @PostConstruct
+    fun init() {
+        // Cria o cliente Redis Lettuce
+        redisClient = RedisClient.create("redis://$redisHost:$redisPort")
+        connection = redisClient.connect(RedisCodec.of(StringCodec.UTF8, ByteArrayCodec.INSTANCE))
+        
+        // Cria o ProxyManager do Bucket4j para Redis
+        proxyManager = LettuceBasedProxyManager.builderFor(connection).build()
+        
+        // Configura o bucket com capacidade e taxa de refill
+        val bucketConfiguration = BucketConfiguration.builder()
+            .addLimit { limit ->
+                limit.capacity(MAX_TOKENS)
+                    .refillGreedy(REFILL_TOKENS, Duration.ofSeconds(REFILL_PERIOD_SECONDS))
+            }
+            .build()
+        
+        // Obtém ou cria o bucket distribuído
+        bucket = proxyManager.builder().build(BUCKET_KEY) { bucketConfiguration }
+    }
+    
+    fun tryConsume(tokensNeeded: Long = 1): Boolean {
+        return bucket.tryConsume(tokensNeeded)
+    }
+}
+```
+
+### 2. OrderConsumerDistributedTokenBucket4j.kt
+
+Consumer que utiliza Bucket4j para controlar o rate limiting:
+
+```kotlin
+@Profile("distributed-token-bucket4j")
+@Component
+class OrderConsumerDistributedTokenBucket4j(
+    val orderService: OrderService,
+    val tokenBucket: RedisDistributedTokenBucket4j
+) {
+    @SqsListener(
+        value = ["event-hero-orders-queue"],
+        acknowledgementMode = "MANUAL"
+    )
+    fun consumeMessage(message: Message<HeroOrderRequest>, acknowledgement: Acknowledgement) {
+        try {
+            if (!tokenBucket.tryConsume()) {
+                // Sem token disponível - mensagem volta para a fila
+                return
+            }
+            
+            orderService.processOrder(message.payload)
+            acknowledgement.acknowledge() // ACK manual apenas após sucesso
+            
+        } catch (e: Exception) {
+            // Erro no processamento - mensagem volta para a fila
+        }
+    }
+}
+```
+
+### 3. application-distributed-token-bucket4j.yml
+
+```yaml
+spring:
+  cloud:
+    aws:
+      sqs:
+        listener:
+          max-concurrent-messages: 5
+          max-messages-per-poll: 5
+          poll-timeout: 10
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+# Bucket4j Token Bucket Configuration
+# Max Tokens: 10
+# Refill Rate: 2 tokens per second
+# This configuration uses Bucket4j with Redis for distributed rate limiting
+```
+
+### 4. Dependências Maven (pom.xml)
+
+```xml
+<!-- Bucket4j for Token Bucket Rate Limiting -->
+<dependency>
+    <groupId>com.bucket4j</groupId>
+    <artifactId>bucket4j-core</artifactId>
+    <version>8.10.1</version>
+</dependency>
+<dependency>
+    <groupId>com.bucket4j</groupId>
+    <artifactId>bucket4j-redis</artifactId>
+    <version>8.10.1</version>
+</dependency>
+<dependency>
+    <groupId>io.lettuce</groupId>
+    <artifactId>lettuce-core</artifactId>
+</dependency>
+```
+
+### Como Funciona - Exemplo de Cenário
+
+**Cenário 1: Tráfego em Burst com Bucket4j**
+1. Sistema está ocioso - bucket tem 10 tokens cheios
+2. Chegam 15 mensagens de uma vez
+3. As primeiras 10 são processadas imediatamente (burst permitido)
+4. Bucket fica vazio (0 tokens)
+5. As 5 mensagens restantes voltam para a fila
+6. A cada 0.5 segundos, 1 novo token é adicionado (2 tokens/segundo)
+7. Mensagens na fila são reprocessadas conforme tokens ficam disponíveis
+
+**Cenário 2: Taxa Sustentada**
+1. Bucket está vazio (0 tokens)
+2. Bucket4j adiciona automaticamente 2 tokens por segundo
+3. Mensagens são processadas a uma taxa máxima de 2/segundo
+4. Sistema mantém throughput estável e controlado
+
+**Cenário 3: Múltiplos Containers com Alta Concorrência**
+1. 3 containers (A, B, C) compartilham o mesmo bucket no Redis
+2. Container A tenta consumir 4 tokens
+3. Container B tenta consumir 3 tokens ao mesmo tempo
+4. Container C tenta consumir 5 tokens simultaneamente
+5. Bucket4j garante atomicidade - apenas 10 tokens são consumidos no total
+6. Containers que não conseguiram tokens fazem suas mensagens voltarem para a fila
+7. Operações CAS (Compare-And-Set) do Redis evitam race conditions
+
+### Vantagens do Bucket4j
+
+✅ **Enterprise-Ready**: Biblioteca madura e amplamente testada em produção  
+✅ **Alta Performance**: Otimizações internas para operações distribuídas  
+✅ **Thread-Safe**: Operações atômicas garantidas mesmo em alta concorrência  
+✅ **Rate Limiting Preciso**: Algoritmo otimizado de token bucket  
+✅ **Suporte a Burst**: Permite picos de tráfego até o limite do bucket  
+✅ **Distribuído**: ProxyManager gerencia buckets compartilhados entre instâncias  
+✅ **Sem Race Conditions**: CAS (Compare-And-Set) previne condições de corrida  
+✅ **Monitoring Ready**: Métricas e estatísticas disponíveis via API  
+✅ **Flexível**: Suporta múltiplos limites e configurações avançadas  
+✅ **Retry Automático**: Mensagens sem token voltam para a fila automaticamente  
+✅ **Sem Perda de Dados**: ACK manual garante que apenas mensagens processadas com sucesso sejam removidas
+
+### Comparação: Token Bucket Manual vs Bucket4j
+
+| Aspecto                  | Token Bucket Manual                    | Bucket4j                                    |
+|--------------------------|----------------------------------------|---------------------------------------------|
+| **Implementação**        | Código customizado                     | Biblioteca enterprise-ready                 |
+| **Atomicidade**          | Operações Redis manuais                | CAS (Compare-And-Set) garantido             |
+| **Performance**          | Boa (depende da implementação)         | Otimizada para alta concorrência            |
+| **Race Conditions**      | Requer cuidado na implementação        | Automaticamente prevenido                   |
+| **Complexidade**         | Média a alta                           | Baixa (API simples)                         |
+| **Manutenibilidade**     | Requer manutenção do código            | Atualizado pela comunidade                  |
+| **Recursos Avançados**   | Limitados ao que você implementar      | Múltiplos limites, bandwidth, etc.          |
+| **Testes em Produção**   | Depende dos seus testes                | Testado por milhares de empresas            |
+
+</details>
+
 ---
 
-### Diferença entre Semaphore vs Token Bucket
+### Diferença entre Semaphore vs Token Bucket vs Bucket4j
 
-| Aspecto              | Distributed Semaphore                     | Distributed Token Bucket                    |
-|----------------------|-------------------------------------------|---------------------------------------------|
-| **Objetivo**         | Limitar concorrência                      | Limitar taxa (rate limiting)                |
-| **Controle**         | Número de processamentos simultâneos      | Taxa de processamento ao longo do tempo     |
-| **Burst**            | Limitado ao número de permits             | Suporta burst até o tamanho do bucket       |
-| **Refill**           | Não há refill automático                  | Refill automático baseado no tempo          |
-| **Uso Ideal**        | Limitar carga em recursos compartilhados  | Controlar throughput e evitar sobrecarga    |
+| Aspecto              | Distributed Semaphore                     | Token Bucket Manual                         | Token Bucket Bucket4j                       |
+|----------------------|-------------------------------------------|---------------------------------------------|---------------------------------------------|
+| **Objetivo**         | Limitar concorrência                      | Limitar taxa (rate limiting)                | Limitar taxa (rate limiting)                |
+| **Controle**         | Número de processamentos simultâneos      | Taxa de processamento ao longo do tempo     | Taxa de processamento ao longo do tempo     |
+| **Burst**            | Limitado ao número de permits             | Suporta burst até o tamanho do bucket       | Suporta burst até o tamanho do bucket       |
+| **Refill**           | Não há refill automático                  | Refill automático baseado no tempo          | Refill automático otimizado                 |
+| **Implementação**    | Código customizado                        | Código customizado                          | Biblioteca enterprise                       |
+| **Atomicidade**      | Sorted Set + Lua scripts                  | Operações Redis manuais                     | CAS (Compare-And-Set)                       |
+| **Performance**      | Boa                                       | Boa                                         | Otimizada                                   |
+| **Uso Ideal**        | Limitar carga em recursos compartilhados  | Controlar throughput e evitar sobrecarga    | Rate limiting em produção enterprise        |
 
 ## Como Executar o Projeto
 
@@ -343,6 +535,80 @@ docker-compose up -d --build
 ``` bash
 sh local-environment/localstack/test/send-batch-message.sh
 ```
+
+---
+
+## Dead Letter Queue (DLQ)
+
+### Por que a DLQ é necessária?
+
+A Dead Letter Queue é **ESSENCIAL** neste projeto por diversos motivos:
+
+1. **Proteção contra mensagens problemáticas (Poison Messages)**
+   - Mensagens que causam erros consistentes podem ficar em loop infinito
+   - Com DLQ configurada, após 5 tentativas (maxReceiveCount=5), a mensagem vai para a DLQ
+
+2. **Rate Limiting pode causar reprocessamento excessivo**
+   - Nos profiles de semáforos e token bucket, quando não há permit/token disponível, a mensagem **não recebe ACK** e retorna para a fila
+   - Sem DLQ, uma mensagem poderia ficar tentando eternamente
+
+3. **Visibilidade de erros**
+   - DLQ permite identificar mensagens que falharam após múltiplas tentativas
+   - Facilita debugging e análise de problemas
+
+### Configuração Atual
+
+A DLQ está configurada no script [create-sqs-queues.sh](local-environment/localstack/init/ready.d/create-sqs-queues.sh):
+
+```bash
+# Fila principal com DLQ configurada
+# maxReceiveCount=5: Após 5 tentativas, a mensagem vai para a DLQ
+awslocal sqs create-queue \
+  --queue-name event-hero-orders-queue \
+  --attributes '{
+    "RedrivePolicy": "{\"deadLetterTargetArn\":\"'"$DLQ_ARN"'\",\"maxReceiveCount\":\"5\"}"
+  }'
+```
+
+**Parâmetros:**
+- `maxReceiveCount=5`: Número máximo de vezes que uma mensagem pode ser recebida antes de ir para a DLQ
+- Se uma mensagem não receber ACK 5 vezes (por erro ou falta de recursos), ela vai automaticamente para a DLQ
+
+### Scripts Auxiliares
+
+**1. Verificar mensagens na DLQ:**
+```bash
+sh local-environment/localstack/test/check-dlq.sh
+```
+Este script mostra:
+- Quantas mensagens estão na DLQ
+- O conteúdo das mensagens
+- Quantas vezes cada mensagem foi recebida
+
+**2. Reprocessar mensagens da DLQ:**
+```bash
+sh local-environment/localstack/test/redrive-dlq.sh
+```
+Este script:
+- Move todas as mensagens da DLQ de volta para a fila principal
+- Permite reprocessar mensagens após correção de bugs
+- Remove mensagens da DLQ após movê-las
+
+### Quando usar cada script
+
+| Situação | Script | Descrição |
+|----------|--------|-----------|
+| Monitorar erros | `check-dlq.sh` | Verificar se há mensagens com problemas |
+| Após correção de bug | `redrive-dlq.sh` | Reprocessar mensagens que falharam |
+| Produção | Configurar alertas | Notificar quando mensagens chegam na DLQ |
+
+### Recomendações
+
+⚠️ **IMPORTANTE**: 
+- **Não remova a configuração da DLQ** - ela é uma proteção essencial
+- **maxReceiveCount=5 é adequado** - permite retries sem sobrecarregar
+- **Monitore a DLQ regularmente** - mensagens na DLQ indicam problemas
+- **Em produção**: Configure alarmes CloudWatch para DLQ não vazia
 
 ---
 

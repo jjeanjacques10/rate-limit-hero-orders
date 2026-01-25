@@ -6,7 +6,7 @@ spring:
       host: localhost
       port: 6379
       password: heropassword123
-      timeout: 2000ms
+      timeout: 5000ms
       lettuce:
         pool:
           max-active: 8
@@ -26,3 +26,9 @@ spring:
         queue:
           auto-create: false
         region: us-east-1
+
+# Logging configuration
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level - %msg%n"
